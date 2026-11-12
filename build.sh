@@ -10,7 +10,7 @@ profile=${2:-abrun-full}
 packages=systemd-sysv,systemd-resolved,dbus,udev,iproute2,openssh-server,cloud-init,sudo,ca-certificates
 case "$profile" in
   abrun-base) ;;
-  abrun-full) packages+=,curl,git,jq,python3,docker.io,docker-cli,docker-compose ;;
+  abrun-full) packages+=,curl,git,jq,python3,docker.io,docker-cli,docker-compose,libatomic1 ;;
   *) echo "Unknown image profile: $profile" >&2; exit 2 ;;
 esac
 
@@ -74,6 +74,37 @@ rm -f "$root"/etc/ssh/ssh_host_* "$root/var/lib/systemd/random-seed" \
 find "$root/root" "$root/home" -type f \( -name authorized_keys -o -name authorized_keys2 \) -delete
 test -z "$(find "$root/var/lib/cloud/seed/nocloud" -mindepth 1 -print -quit)"
 if [[ $profile == abrun-full ]]; then
+  node_version=26.13.1
+  bun_version=1.4.4
+  case "$architecture" in
+    amd64)
+      node_arch=x64
+      bun_arch=x64
+      node_sha=5c063e46bab0fbc1c17cc445d7ff129cbdcd0471be6ed83b6ab864f8143bc864
+      bun_sha=bf8ccbfb2b0b80159e0f9a6d15c55317add8077534dbc6130a3edb52fccb395c
+      ;;
+    arm64)
+      node_arch=arm64
+      bun_arch=aarch64
+      node_sha=89e1853138db51e8b82d3e98ba9c0d3f2956a28e5e55ea1b7e12d25aae92d5dd
+      bun_sha=baa6bb36f51d6e58561e02bbea825038a9df454f673d6d776e8bbf86f8c7850e
+      ;;
+    *) echo "Unsupported architecture for abrun-full: $architecture" >&2; exit 1 ;;
+  esac
+
+  node_archive=node-v$node_version-linux-$node_arch.tar.xz
+  bun_archive=bun-linux-$bun_arch.zip
+  curl -fsSL --retry 3 --max-time 180 "https://nodejs.org/dist/v$node_version/$node_archive" -o "$work/$node_archive"
+  curl -fsSL --retry 3 --max-time 180 "https://github.com/oven-sh/bun/releases/download/bun-v$bun_version/$bun_archive" -o "$work/$bun_archive"
+  (cd "$work" && printf '%s  %s\n' "$node_sha" "$node_archive" "$bun_sha" "$bun_archive" | sha256sum --check)
+  install -d "$root/usr/local/bin"
+  tar -xJf "$work/$node_archive" -C "$root/usr/local" --strip-components=1 --no-same-owner
+  unzip -q "$work/$bun_archive" "bun-linux-$bun_arch/bun" -d "$work"
+  install -m 0755 "$work/bun-linux-$bun_arch/bun" "$root/usr/local/bin/bun"
+
+  [[ $(chroot "$root" /usr/local/bin/node --version) == "v$node_version" ]]
+  chroot "$root" /usr/local/bin/npm --version
+  [[ $(chroot "$root" /usr/local/bin/bun --version) == "$bun_version" ]]
   systemctl --root="$root" enable docker.service
   chroot "$root" docker --version
   chroot "$root" docker compose version

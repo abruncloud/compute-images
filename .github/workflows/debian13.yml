@@ -34,7 +34,7 @@ jobs:
             --mount "type=bind,src=$PWD/output,dst=/output" \
             debian:13 bash -ec '
               apt-get update
-              apt-get install -y --no-install-recommends mmdebstrap debian-archive-keyring ca-certificates e2fsprogs systemd zstd
+              apt-get install -y --no-install-recommends mmdebstrap debian-archive-keyring ca-certificates e2fsprogs systemd zstd curl unzip xz-utils
               /build.sh /output "$IMAGE_PROFILE"
             '
       - uses: actions/upload-artifact@v7
@@ -75,4 +75,4 @@ jobs:
           gh release create "$RELEASE_TAG" ./*.root.ext4.zst SHA256SUMS \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "Debian 13 Compute Images" \
-            --notes "Debian 13 AMD64 and ARM64 root disks for abrun-base and abrun-full. Verify downloads with SHA256SUMS."
+            --notes "Debian 13 AMD64 and ARM64 root disks for abrun-base and abrun-full. abrun-full includes Node.js LTS and Bun. Verify downloads with SHA256SUMS."
