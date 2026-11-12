@@ -1,4 +1,4 @@
-name: Build Debian 13 ARM64
+name: Build Debian 13
 on:
   workflow_dispatch:
   schedule:
@@ -9,7 +9,14 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04-arm
+    strategy:
+      matrix:
+        include:
+          - architecture: amd64
+            runner: ubuntu-24.04
+          - architecture: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
@@ -28,7 +35,7 @@ jobs:
             '
       - uses: actions/upload-artifact@v7
         with:
-          name: debian13-arm64
+          name: debian13-${{ matrix.architecture }}
           path: output/
           compression-level: 0
           if-no-files-found: error
