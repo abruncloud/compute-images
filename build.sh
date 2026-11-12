@@ -7,10 +7,19 @@ if [[ $EUID != 0 || $# < 1 || $# > 2 ]]; then
 fi
 
 profile=${2:-abrun-full}
+debian_mirror=${ABRUN_IMAGE_DEBIAN_MIRROR:-https://deb.debian.org/debian}
+security_mirror=${ABRUN_IMAGE_SECURITY_MIRROR:-https://deb.debian.org/debian-security}
+docker_mirror=${ABRUN_IMAGE_DOCKER_MIRROR:-https://download.docker.com/linux/debian}
+for mirror in "$debian_mirror" "$security_mirror" "$docker_mirror"; do
+  if [[ ! $mirror =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?(/[A-Za-z0-9._~/-]+)?$ ]]; then
+    echo 'Use an HTTPS APT mirror without credentials or query parameters.' >&2
+    exit 2
+  fi
+done
 packages=systemd-sysv,systemd-resolved,dbus,udev,iproute2,openssh-server,cloud-init,sudo,ca-certificates
 case "$profile" in
   abrun-base) ;;
-  abrun-full) packages+=,curl,git,jq,python3,docker.io,docker-cli,docker-compose,libatomic1 ;;
+  abrun-full) packages+=,curl,git,jq,python3,libatomic1 ;;
   *) echo "Unknown image profile: $profile" >&2; exit 2 ;;
 esac
 
@@ -26,14 +35,43 @@ work=$(mktemp -d "$output/.build.XXXXXX")
 trap 'rm -rf -- "$work"' EXIT
 root=$work/root
 
-cat >"$work/debian.list" <<'APT'
-deb [signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] https://deb.debian.org/debian trixie main
-deb [signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] https://deb.debian.org/debian trixie-updates main
-deb [signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] https://deb.debian.org/debian-security trixie-security main
+cat >"$work/debian.list" <<APT
+deb [signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] ${debian_mirror%/} trixie main
+deb [signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] ${debian_mirror%/} trixie-updates main
+deb [signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] ${security_mirror%/} trixie-security main
 APT
 mmdebstrap --mode=root --variant=minbase --format=directory \
   --aptopt='Acquire::Languages "none"' --include="$packages" \
   trixie "$root" "$work/debian.list"
+
+if [[ $profile == abrun-full ]]; then
+  rm -f "$root/etc/resolv.conf"
+  cp -L /etc/resolv.conf "$root/etc/resolv.conf"
+  install -d -m 0755 "$root/etc/apt/keyrings"
+  if [[ -n ${ABRUN_IMAGE_DOCKER_KEY_FILE:-} ]]; then
+    install -m 0644 "$ABRUN_IMAGE_DOCKER_KEY_FILE" "$root/etc/apt/keyrings/docker.asc"
+  else
+    curl -fsSL --retry 3 --max-time 60 https://download.docker.com/linux/debian/gpg \
+      -o "$root/etc/apt/keyrings/docker.asc"
+  fi
+  chmod 0644 "$root/etc/apt/keyrings/docker.asc"
+  cat >"$root/etc/apt/sources.list.d/docker.sources" <<APT
+Types: deb
+URIs: ${docker_mirror%/}
+Suites: trixie
+Components: stable
+Signed-By: /etc/apt/keyrings/docker.asc
+APT
+  printf '#!/bin/sh\nexit 101\n' >"$root/usr/sbin/policy-rc.d"
+  chmod 0755 "$root/usr/sbin/policy-rc.d"
+  chroot "$root" apt-get -o APT::Update::Error-Mode=any -o Acquire::Retries=2 \
+    -o Acquire::Languages=none update
+  chroot "$root" env DEBIAN_FRONTEND=noninteractive apt-get -y --no-install-recommends \
+    install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  chroot "$root" apt-get clean
+  rm -f "$root/usr/sbin/policy-rc.d"
+  rm -rf "$root/var/lib/apt/lists/"*
+fi
 
 mkdir -p "$root/var/lib/cloud/seed/nocloud" "$root/etc/systemd/network" \
   "$root/etc/systemd/system/cloud-init-local.service.d"
@@ -67,6 +105,15 @@ UNIT
 printf 'localhost\n' >"$root/etc/hostname"
 printf '127.0.0.1 localhost\n::1 localhost ip6-localhost ip6-loopback\n' >"$root/etc/hosts"
 ln -sfn /run/systemd/resolve/stub-resolv.conf "$root/etc/resolv.conf"
+install -d -m 0755 "$root/etc/ssh/sshd_config.d"
+cat >"$root/etc/ssh/sshd_config.d/00-abrun-image.conf" <<'SSH'
+PermitRootLogin no
+PubkeyAuthentication yes
+AuthenticationMethods publickey
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+SSH
+chmod 0644 "$root/etc/ssh/sshd_config.d/00-abrun-image.conf"
 systemctl --root="$root" enable systemd-networkd.service systemd-resolved.service ssh.service
 chroot "$root" cloud-init clean --logs --machine-id
 rm -f "$root"/etc/ssh/ssh_host_* "$root/var/lib/systemd/random-seed" \
