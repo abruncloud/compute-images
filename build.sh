@@ -1,15 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $EUID != 0 || $# != 1 ]]; then
-  echo 'Usage: sudo ./build.sh OUTPUT_DIRECTORY' >&2
+if [[ $EUID != 0 || $# < 1 || $# > 2 ]]; then
+  echo 'Usage: sudo ./build.sh OUTPUT_DIRECTORY [abrun-base|abrun-developer]' >&2
   exit 2
 fi
+
+profile=${2:-abrun-developer}
+packages=systemd-sysv,systemd-resolved,dbus,udev,iproute2,openssh-server,cloud-init,sudo,ca-certificates
+case "$profile" in
+  abrun-base) ;;
+  abrun-developer) packages+=,curl,git,jq,python3,docker.io,docker-cli,docker-compose ;;
+  *) echo "Unknown image profile: $profile" >&2; exit 2 ;;
+esac
 
 mkdir -p "$1"
 output=$(realpath "$1")
 architecture=$(dpkg --print-architecture)
-asset=debian13-$architecture.root.ext4.zst
+asset=$profile-debian13-$architecture.root.ext4.zst
 if [[ -e "$output/$asset" || -e "$output/SHA256SUMS" ]]; then
   echo 'Choose an output directory without a previous image or checksum.' >&2
   exit 1
@@ -23,7 +31,6 @@ deb [signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] https://deb.debia
 deb [signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] https://deb.debian.org/debian trixie-updates main
 deb [signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] https://deb.debian.org/debian-security trixie-security main
 APT
-packages=systemd-sysv,systemd-resolved,dbus,udev,iproute2,openssh-server,cloud-init,sudo,ca-certificates,curl,git,jq,python3,docker.io,docker-cli,docker-compose
 mmdebstrap --mode=root --variant=minbase --format=directory \
   --aptopt='Acquire::Languages "none"' --include="$packages" \
   trixie "$root" "$work/debian.list"
@@ -60,14 +67,17 @@ UNIT
 printf 'localhost\n' >"$root/etc/hostname"
 printf '127.0.0.1 localhost\n::1 localhost ip6-localhost ip6-loopback\n' >"$root/etc/hosts"
 ln -sfn /run/systemd/resolve/stub-resolv.conf "$root/etc/resolv.conf"
-systemctl --root="$root" enable docker.service systemd-networkd.service systemd-resolved.service ssh.service
+systemctl --root="$root" enable systemd-networkd.service systemd-resolved.service ssh.service
 chroot "$root" cloud-init clean --logs --machine-id
 rm -f "$root"/etc/ssh/ssh_host_* "$root/var/lib/systemd/random-seed" \
   "$root"/var/log/{dpkg.log,apt/history.log,apt/term.log}
 find "$root/root" "$root/home" -type f \( -name authorized_keys -o -name authorized_keys2 \) -delete
 test -z "$(find "$root/var/lib/cloud/seed/nocloud" -mindepth 1 -print -quit)"
-chroot "$root" docker --version
-chroot "$root" docker compose version
+if [[ $profile == abrun-developer ]]; then
+  systemctl --root="$root" enable docker.service
+  chroot "$root" docker --version
+  chroot "$root" docker compose version
+fi
 chmod 0755 "$root"
 
 truncate -s 4G "$work/root.ext4"

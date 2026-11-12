@@ -1,6 +1,11 @@
 name: Build Debian 13
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Optional version tag for a public release
+        type: string
+        required: false
   schedule:
     - cron: '23 4 * * 1'
 
@@ -11,31 +16,63 @@ jobs:
   build:
     strategy:
       matrix:
-        include:
-          - architecture: amd64
-            runner: ubuntu-24.04
-          - architecture: arm64
-            runner: ubuntu-24.04-arm
-    runs-on: ${{ matrix.runner }}
+        architecture: [amd64, arm64]
+        profile: [abrun-base, abrun-developer]
+    runs-on: ${{ matrix.architecture == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
       - name: Build from Debian stable and security repositories
+        env:
+          IMAGE_PROFILE: ${{ matrix.profile }}
         run: |
           mkdir -p output
-          docker run --rm --privileged \
+          docker run --rm --privileged -e IMAGE_PROFILE \
             --mount "type=bind,src=$PWD/build.sh,dst=/build.sh,readonly" \
             --mount "type=bind,src=$PWD/output,dst=/output" \
             debian:13 bash -ec '
               apt-get update
               apt-get install -y --no-install-recommends mmdebstrap debian-archive-keyring ca-certificates e2fsprogs systemd zstd
-              /build.sh /output
+              /build.sh /output "$IMAGE_PROFILE"
             '
       - uses: actions/upload-artifact@v7
         with:
-          name: debian13-${{ matrix.architecture }}
+          name: ${{ matrix.profile }}-debian13-${{ matrix.architecture }}
           path: output/
           compression-level: 0
           if-no-files-found: error
+
+
+  release:
+    if: github.event_name == 'workflow_dispatch' && inputs.release_tag != '' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+      - name: Verify and publish the four images
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          [[ $RELEASE_TAG =~ ^debian13-[0-9]{4}-[0-9]{2}-[0-9]{2}(-r[0-9]+)?$ ]]
+          mkdir release
+          for profile in abrun-base abrun-developer; do
+            for architecture in amd64 arm64; do
+              image="$profile-debian13-$architecture"
+              (cd "artifacts/$image" && sha256sum --check SHA256SUMS)
+              mv "artifacts/$image/$image.root.ext4.zst" release/
+            done
+          done
+          cd release
+          sha256sum ./*.root.ext4.zst >SHA256SUMS
+          gh release create "$RELEASE_TAG" ./*.root.ext4.zst SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Debian 13 Compute Images" \
+            --notes "Debian 13 AMD64 and ARM64 root disks for abrun-base and abrun-developer. Verify downloads with SHA256SUMS."
