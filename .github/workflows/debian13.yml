@@ -17,7 +17,7 @@ jobs:
     strategy:
       matrix:
         architecture: [amd64, arm64]
-        profile: [abrun-base, abrun-developer]
+        profile: [abrun-base, abrun-full]
     runs-on: ${{ matrix.architecture == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     timeout-minutes: 25
     steps:
@@ -63,7 +63,7 @@ jobs:
           set -euo pipefail
           [[ $RELEASE_TAG =~ ^debian13-[0-9]{4}-[0-9]{2}-[0-9]{2}(-r[0-9]+)?$ ]]
           mkdir release
-          for profile in abrun-base abrun-developer; do
+          for profile in abrun-base abrun-full; do
             for architecture in amd64 arm64; do
               image="$profile-debian13-$architecture"
               (cd "artifacts/$image" && sha256sum --check SHA256SUMS)
@@ -75,4 +75,4 @@ jobs:
           gh release create "$RELEASE_TAG" ./*.root.ext4.zst SHA256SUMS \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "Debian 13 Compute Images" \
-            --notes "Debian 13 AMD64 and ARM64 root disks for abrun-base and abrun-developer. Verify downloads with SHA256SUMS."
+            --notes "Debian 13 AMD64 and ARM64 root disks for abrun-base and abrun-full. Verify downloads with SHA256SUMS."

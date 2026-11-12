@@ -2,15 +2,15 @@
 set -euo pipefail
 
 if [[ $EUID != 0 || $# < 1 || $# > 2 ]]; then
-  echo 'Usage: sudo ./build.sh OUTPUT_DIRECTORY [abrun-base|abrun-developer]' >&2
+  echo 'Usage: sudo ./build.sh OUTPUT_DIRECTORY [abrun-base|abrun-full]' >&2
   exit 2
 fi
 
-profile=${2:-abrun-developer}
+profile=${2:-abrun-full}
 packages=systemd-sysv,systemd-resolved,dbus,udev,iproute2,openssh-server,cloud-init,sudo,ca-certificates
 case "$profile" in
   abrun-base) ;;
-  abrun-developer) packages+=,curl,git,jq,python3,docker.io,docker-cli,docker-compose ;;
+  abrun-full) packages+=,curl,git,jq,python3,docker.io,docker-cli,docker-compose ;;
   *) echo "Unknown image profile: $profile" >&2; exit 2 ;;
 esac
 
@@ -73,7 +73,7 @@ rm -f "$root"/etc/ssh/ssh_host_* "$root/var/lib/systemd/random-seed" \
   "$root"/var/log/{dpkg.log,apt/history.log,apt/term.log}
 find "$root/root" "$root/home" -type f \( -name authorized_keys -o -name authorized_keys2 \) -delete
 test -z "$(find "$root/var/lib/cloud/seed/nocloud" -mindepth 1 -print -quit)"
-if [[ $profile == abrun-developer ]]; then
+if [[ $profile == abrun-full ]]; then
   systemctl --root="$root" enable docker.service
   chroot "$root" docker --version
   chroot "$root" docker compose version
