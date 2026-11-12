@@ -7,6 +7,8 @@ Minimal Debian 13 guest images for Abrun Compute. Both profiles build natively f
 
 Download the compressed ext4 disk and its SHA-256 checksum from [Releases](https://github.com/abruncloud/compute-images/releases). The disk expands to 4 GiB. Boot it with a compatible guest kernel for your architecture and a read-only NoCloud seed containing the instance identity and authorized public keys. The guest generates its own SSH host keys on first boot. An Abrun seed can also supply the assigned static IP. The image supports DHCP for seeds that omit it.
 
+Connect as `abrun` with a provisioned public key. The account uses Bash, and its first interactive login displays a welcome message with the hostname supplied by the seed.
+
 Build on a same-architecture Debian 13 host with `mmdebstrap`, `debian-archive-keyring`, `ca-certificates`, `e2fsprogs`, `systemd`, `zstd`, `curl`, `unzip`, and `xz-utils` installed.
 
 ```sh

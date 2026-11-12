@@ -73,10 +73,27 @@ APT
   rm -rf "$root/var/lib/apt/lists/"*
 fi
 
+chroot "$root" useradd --create-home --shell /bin/bash abrun
+cat >"$root/etc/profile.d/99-abrun-welcome.sh" <<'WELCOME'
+case $- in
+  *i*)
+    if [ "${USER:-}" = abrun ] && [ -n "${BASH_VERSION:-}" ] &&
+      (umask 077; set -C; : >"$HOME/.abrun-welcomed") 2>/dev/null; then
+      printf 'Welcome to Abrun. You are connected to %s.\n' "$(hostname)"
+    fi
+    ;;
+esac
+WELCOME
+
 mkdir -p "$root/var/lib/cloud/seed/nocloud" "$root/etc/systemd/network" \
   "$root/etc/systemd/system/cloud-init-local.service.d"
 cat >"$root/etc/cloud/cloud.cfg.d/99-abrund-image.cfg" <<'CLOUD'
 datasource_list: [NoCloud]
+system_info:
+  default_user:
+    name: abrun
+    shell: /bin/bash
+    lock_passwd: true
 network: {config: disabled}
 apt:
   preserve_sources_list: true
