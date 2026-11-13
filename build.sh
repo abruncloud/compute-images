@@ -16,7 +16,7 @@ for mirror in "$debian_mirror" "$security_mirror" "$docker_mirror"; do
     exit 2
   fi
 done
-packages=systemd-sysv,systemd-resolved,dbus,udev,iproute2,openssh-server,cloud-init,sudo,ca-certificates
+packages=systemd-sysv,systemd-resolved,dbus,udev,iproute2,openssh-server,cloud-init,sudo,ca-certificates,htop
 case "$profile" in
   abrun-base) ;;
   abrun-full) packages+=,curl,git,jq,python3,libatomic1 ;;
@@ -89,6 +89,7 @@ mkdir -p "$root/var/lib/cloud/seed/nocloud" "$root/etc/systemd/network" \
   "$root/etc/systemd/system/cloud-init-local.service.d"
 cat >"$root/etc/cloud/cloud.cfg.d/99-abrund-image.cfg" <<'CLOUD'
 datasource_list: [NoCloud]
+manage_etc_hosts: localhost
 system_info:
   default_user:
     name: abrun
