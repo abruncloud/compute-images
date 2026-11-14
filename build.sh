@@ -19,7 +19,11 @@ done
 packages=systemd-sysv,systemd-resolved,dbus,udev,iproute2,openssh-server,cloud-init,sudo,ca-certificates,htop
 case "$profile" in
   abrun-base) ;;
-  abrun-full) packages+=,curl,git,jq,python3,libatomic1 ;;
+  abrun-full)
+    packages+=,curl,git,jq,python3,libatomic1
+    packages+=,vim-tiny,tmux,ripgrep,fd-find,rsync,unzip,zstd
+    packages+=,bind9-dnsutils,iputils-ping,netcat-openbsd,lsof
+    ;;
   *) echo "Unknown image profile: $profile" >&2; exit 2 ;;
 esac
 
@@ -163,6 +167,8 @@ if [[ $profile == abrun-full ]]; then
   curl -fsSL --retry 3 --max-time 180 "https://github.com/oven-sh/bun/releases/download/bun-v$bun_version/$bun_archive" -o "$work/$bun_archive"
   (cd "$work" && printf '%s  %s\n' "$node_sha" "$node_archive" "$bun_sha" "$bun_archive" | sha256sum --check)
   install -d "$root/usr/local/bin"
+  ln -s /usr/bin/fdfind "$root/usr/local/bin/fd"
+  chroot "$root" fd --version
   tar -xJf "$work/$node_archive" -C "$root/usr/local" --strip-components=1 --no-same-owner
   unzip -q "$work/$bun_archive" "bun-linux-$bun_arch/bun" -d "$work"
   install -m 0755 "$work/bun-linux-$bun_arch/bun" "$root/usr/local/bin/bun"

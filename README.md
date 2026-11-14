@@ -3,7 +3,7 @@
 Minimal Debian 13 guest images for Abrun Compute. Both profiles build natively for AMD64 and ARM64.
 
 - `abrun-base` includes systemd, OpenSSH, APT, sudo, and NoCloud provisioning.
-- `abrun-full` adds Docker Engine, Docker Compose, Git, curl, jq, Python tooling, Node.js LTS with npm, and Bun.
+- `abrun-full` adds Docker Engine, Docker Compose, Git, curl, jq, Python tooling, Node.js LTS with npm, and Bun. It also includes Vim, tmux, ripgrep, fd, rsync, archive utilities, and tools for diagnosing DNS, network connections, and open files.
 
 Download the compressed ext4 disk and its SHA-256 checksum from [Releases](https://github.com/abruncloud/compute-images/releases). The disk expands to 4 GiB. Boot it with a compatible guest kernel for your architecture and a read-only NoCloud seed containing the instance identity and authorized public keys. The guest generates its own SSH host keys on first boot. An Abrun seed can also supply the assigned static IP. The image supports DHCP for seeds that omit it.
 
